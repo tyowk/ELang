@@ -1,115 +1,19 @@
-export interface Token {
-    type: string;
-    value: string;
-}
+import { TokenType, type Token, Operators, Keywords } from '../types';
 
-export const KEYWORDS = new Set([
-    'whenever',
-    'orwhat',
-    'loopit',
-    'aslongas',
-    'make',
-    'sendback',
-    'thing',
-    'lock',
-    'maybe',
-    'yes',
-    'no',
-    'nothing',
-    'snapout',
-    'keepgoing',
-    'matchcase',
-    'scenario',
-    'otherwise',
-    'attempt',
-    'fresh',
-    'myself',
-    'whatis',
-    'typeis',
-    'within',
-    'of',
-    'risky',
-    'grab',
-    'cleanup',
-    'boom',
-    'blueprint',
-    'buildon',
-    'parentpower',
-    'bringin',
-    'sendout',
-    'from',
-    'giveback',
-    'freezehere',
-    'obliterate',
-    'using',
-    'void',
-    'print',
-    'builder'
-]);
-
-const MULTI_OPS: Record<string, string> = {
-    '===': 'STRICT_EQUAL',
-    '!==': 'STRICT_NOT_EQUAL',
-    '>>>': 'ZERO_FILL_RIGHT_SHIFT'
-};
-
-const TWO_OPS: Record<string, string> = {
-    '==': 'EQUAL',
-    '!=': 'NOT_EQUAL',
-    '>=': 'GTE',
-    '<=': 'LTE',
-    '++': 'INCREMENT',
-    '--': 'DECREMENT',
-    '&&': 'AND',
-    '||': 'OR',
-    '**': 'EXPONENT',
-    '<<': 'LEFT_SHIFT',
-    '>>': 'RIGHT_SHIFT',
-    '=>': 'ARROW'
-};
-
-const ONE_OPS: Record<string, string> = {
-    '=': 'ASSIGN',
-    '+': 'PLUS',
-    '-': 'MINUS',
-    '*': 'MULTIPLY',
-    '/': 'DIVIDE',
-    '%': 'MODULO',
-    '>': 'GT',
-    '<': 'LT',
-    '!': 'NOT',
-    '&': 'BITWISE_AND',
-    '|': 'BITWISE_OR',
-    '^': 'BITWISE_XOR',
-    '~': 'BITWISE_NOT',
-    '?': 'QUESTION',
-    ':': 'COLON',
-    '.': 'DOT',
-    ';': 'SEMICOLON',
-    ',': 'COMMA',
-    '(': 'LPAREN',
-    ')': 'RPAREN',
-    '{': 'LBRACE',
-    '}': 'RBRACE',
-    '[': 'LBRACKET',
-    ']': 'RBRACKET'
-};
-
-export class Lexer {
-    private input: string;
-    private index: number;
+export class Lexer<TToken extends Token = Token> {
+    private readonly input: string;
+    private index = 0;
 
     constructor(input: string) {
         this.input = input;
-        this.index = 0;
     }
 
-    static run(input: string): Token[] {
-        return new Lexer(input).tokenize();
+    static run<T extends Token = Token>(input: string): T[] {
+        return new Lexer<T>(input).tokenize();
     }
 
-    private tokenize(): Token[] {
-        const tokens: Token[] = [];
+    public tokenize(): TToken[] {
+        const tokens: TToken[] = [];
 
         while (this.index < this.input.length) {
             const char = this.current();
@@ -120,72 +24,82 @@ export class Lexer {
             }
 
             if (this.isAlpha(char)) {
-                tokens.push(this.readIdentifier());
+                tokens.push(this.readIdentifier() as TToken);
                 continue;
             }
 
             if (this.isDigit(char) || (char === '.' && this.isDigit(this.peek(1)))) {
-                tokens.push(this.readNumber());
+                tokens.push(this.readNumber() as TToken);
                 continue;
             }
 
             if (char === '"' || char === "'") {
-                tokens.push(this.readString(char));
+                tokens.push(this.readString(char) as TToken);
                 continue;
             }
 
             if (char === '`') {
-                tokens.push(this.readTemplate());
+                tokens.push(this.readTemplate() as TToken);
                 continue;
             }
 
             if (this.skipComments()) continue;
 
             if (char === '/' && this.isRegexContext(tokens)) {
-                tokens.push(this.readRegex());
+                tokens.push(this.readRegex() as TToken);
                 continue;
             }
 
             const operator = this.readOperator();
             if (operator) {
-                tokens.push(operator);
+                tokens.push(operator as TToken);
                 continue;
             }
 
-            tokens.push({ type: 'ILLEGAL', value: this.advance() });
+            tokens.push({ type: TokenType.ILLEGAL, value: this.advance() } as TToken);
         }
 
         return tokens;
     }
 
     private readIdentifier(): Token {
-        const value = this.readWhile((c) => this.isAlphaNumeric(c));
-        return { type: KEYWORDS.has(value) ? 'KEYWORD' : 'IDENTIFIER', value };
+        const value = this.readWhile(this.isAlphaNumeric);
+        const type = Keywords.has(value) ? TokenType.KEYWORD : TokenType.IDENTIFIER;
+        return { type, value };
     }
 
     private readNumber(): Token {
         let value = '';
 
-        if (this.current() === '.') value += this.advance();
-        value += this.readWhile((c) => this.isDigit(c));
+        if (this.isDigit(this.current())) {
+            value += this.readWhile(this.isDigit);
 
-        if (this.current() === '.') {
-            value += this.advance();
-            value += this.readWhile((c) => this.isDigit(c));
-        }
-
-        if (/e/i.test(this.current())) {
-            value += this.advance();
-            if (this.current() === '+' || this.current() === '-') {
+            if (this.current() === '.' && this.isDigit(this.peek(1))) {
                 value += this.advance();
+                value += this.readWhile(this.isDigit);
             }
-            value += this.readWhile((c) => this.isDigit(c));
+
+            if (this.current().toLowerCase() === 'e') {
+                value += this.advance();
+
+                if (this.current() === '+' || this.current() === '-') {
+                    value += this.advance();
+                }
+
+                if (!this.isDigit(this.current())) {
+                    return { type: TokenType.ILLEGAL, value };
+                }
+
+                value += this.readWhile(this.isDigit);
+            }
+
+            return { type: TokenType.NUMBER, value };
         }
 
-        return { type: 'NUMBER', value };
+        return { type: TokenType.ILLEGAL, value: this.advance() };
     }
 
-    private readString(quote: string): Token {
+    private readString(quote: '"' | "'"): Token {
         this.advance();
         let value = '';
 
@@ -199,15 +113,33 @@ export class Lexer {
         }
 
         this.advance();
-        return { type: 'STRING', value };
+        return { type: TokenType.STRING, value };
     }
 
     private readTemplate(): Token {
-        this.advance();
         let value = '';
+        this.advance();
+        let depth = 1;
 
-        while (this.index < this.input.length && this.current() !== '`') {
-            if (this.current() === '\\') {
+        while (this.index < this.input.length && depth > 0) {
+            const char = this.current();
+
+            if (char === '`') {
+                this.advance();
+                depth--;
+                if (depth === 0) break;
+                value += '`';
+                continue;
+            }
+
+            if (char === '$' && this.peek(1) === '{') {
+                value += this.advance();
+                value += this.advance();
+                value += this.readNestedTemplate();
+                continue;
+            }
+
+            if (char === '\\') {
                 value += this.advance();
                 value += this.advance();
             } else {
@@ -215,19 +147,56 @@ export class Lexer {
             }
         }
 
-        this.advance();
-        return { type: 'TEMPLATE', value };
+        return { type: TokenType.TEMPLATE, value };
+    }
+
+    private readNestedTemplate(): string {
+        let result = '';
+        let depth = 1;
+
+        while (this.index < this.input.length && depth > 0) {
+            const char = this.current();
+
+            if (char === '{') {
+                depth++;
+                result += this.advance();
+            } else if (char === '}') {
+                depth--;
+                result += this.advance();
+            } else if (char === '`') {
+                result += this.readTemplate().value;
+            } else if (char === '"' || char === "'") {
+                result += this.readString(char as '"' | "'").value;
+            } else if (char === '/' && this.isRegexContext([])) {
+                result += this.readRegex().value;
+            } else if (char === '\\') {
+                result += this.advance();
+                result += this.advance();
+            } else {
+                result += this.advance();
+            }
+        }
+
+        return result;
     }
 
     private readRegex(): Token {
         let value = this.advance();
+        let inClass = false;
 
         while (this.index < this.input.length) {
             const char = this.current();
+
             if (char === '\\') {
                 value += this.advance();
                 value += this.advance();
-            } else if (char === '/') {
+            } else if (char === '[') {
+                inClass = true;
+                value += this.advance();
+            } else if (char === ']' && inClass) {
+                inClass = false;
+                value += this.advance();
+            } else if (char === '/' && !inClass) {
                 value += this.advance();
                 break;
             } else {
@@ -235,26 +204,27 @@ export class Lexer {
             }
         }
 
-        value += this.readWhile((c) => /[a-z]/i.test(c));
-        return { type: 'REGEX', value };
+        value += this.readWhile(/[a-z]/i.test);
+        return { type: TokenType.REGEX, value };
     }
 
     private readOperator(): Token | null {
-        const three = this.current() + this.peek(1) + this.peek(2);
-        const two = this.current() + this.peek(1);
-        const one = this.current();
+        const candidates = [
+            this.current() + this.peek(1) + this.peek(2) + this.peek(3),
+            this.current() + this.peek(1) + this.peek(2),
+            this.current() + this.peek(1),
+            this.current()
+        ];
 
-        if (MULTI_OPS[three]) {
-            return {
-                type: MULTI_OPS[three],
-                value: this.advance() + this.advance() + this.advance()
-            };
-        }
-        if (TWO_OPS[two]) {
-            return { type: TWO_OPS[two], value: this.advance() + this.advance() };
-        }
-        if (ONE_OPS[one]) {
-            return { type: ONE_OPS[one], value: this.advance() };
+        const levels: (keyof typeof Operators)[] = ['FOUR', 'THREE', 'TWO', 'ONE'];
+
+        for (let i = 0; i < 4; i++) {
+            const candidate = candidates[i];
+            const type = Operators[levels[i]][candidate];
+            if (type) {
+                const value = Array.from({ length: 4 - i }, () => this.advance()).join('');
+                return { type, value };
+            }
         }
 
         return null;
@@ -292,37 +262,26 @@ export class Lexer {
 
     private readWhile(predicate: (char: string) => boolean): string {
         let result = '';
-        while (predicate(this.current()) && this.index < this.input.length) {
+        while (this.index < this.input.length && predicate(this.current())) {
             result += this.advance();
         }
         return result;
     }
 
     private advance(): string {
-        return this.input[this.index++];
+        return this.input[this.index++] ?? '';
     }
 
     private current(): string {
-        return this.input[this.index] || '';
+        return this.input[this.index] ?? '';
     }
 
     private peek(offset = 0): string {
-        return this.input[this.index + offset] || '';
+        return this.input[this.index + offset] ?? '';
     }
 
-    private isWhitespace(char: string): boolean {
-        return /\s/.test(char);
-    }
-
-    private isAlpha(char: string): boolean {
-        return /[a-zA-Z_$]/.test(char);
-    }
-
-    private isDigit(char: string): boolean {
-        return /\d/.test(char);
-    }
-
-    private isAlphaNumeric(char: string): boolean {
-        return /[a-zA-Z0-9_$]/.test(char);
-    }
+    private isWhitespace = (c: string): boolean => /\s/.test(c);
+    private isAlpha = (c: string): boolean => /[a-zA-Z_$]/.test(c);
+    private isDigit = (c: string): boolean => /\d/.test(c);
+    private isAlphaNumeric = (c: string): boolean => /[a-zA-Z0-9_$]/.test(c);
 }

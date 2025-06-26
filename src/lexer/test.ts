@@ -32,5 +32,5 @@ function main() {
     `;
 
     const t = Lexer.run(input);
-    console.log(t);
+    console.log(JSON.stringify(t, null, 2));
 }

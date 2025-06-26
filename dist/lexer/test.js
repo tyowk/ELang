@@ -32,5 +32,5 @@ function main() {
     arrow(1, 2);
     `;
     const t = _1.Lexer.run(input);
-    console.log(t);
+    console.log(JSON.stringify(t, null, 2));
 }

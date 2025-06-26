@@ -1,100 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Lexer = exports.KEYWORDS = void 0;
-exports.KEYWORDS = new Set([
-    'whenever',
-    'orwhat',
-    'loopit',
-    'aslongas',
-    'make',
-    'sendback',
-    'thing',
-    'lock',
-    'maybe',
-    'yes',
-    'no',
-    'nothing',
-    'snapout',
-    'keepgoing',
-    'matchcase',
-    'scenario',
-    'otherwise',
-    'attempt',
-    'fresh',
-    'myself',
-    'whatis',
-    'typeis',
-    'within',
-    'of',
-    'risky',
-    'grab',
-    'cleanup',
-    'boom',
-    'blueprint',
-    'buildon',
-    'parentpower',
-    'bringin',
-    'sendout',
-    'from',
-    'giveback',
-    'freezehere',
-    'obliterate',
-    'using',
-    'void',
-    'print',
-    'builder'
-]);
-const MULTI_OPS = {
-    '===': 'STRICT_EQUAL',
-    '!==': 'STRICT_NOT_EQUAL',
-    '>>>': 'ZERO_FILL_RIGHT_SHIFT'
-};
-const TWO_OPS = {
-    '==': 'EQUAL',
-    '!=': 'NOT_EQUAL',
-    '>=': 'GTE',
-    '<=': 'LTE',
-    '++': 'INCREMENT',
-    '--': 'DECREMENT',
-    '&&': 'AND',
-    '||': 'OR',
-    '**': 'EXPONENT',
-    '<<': 'LEFT_SHIFT',
-    '>>': 'RIGHT_SHIFT',
-    '=>': 'ARROW'
-};
-const ONE_OPS = {
-    '=': 'ASSIGN',
-    '+': 'PLUS',
-    '-': 'MINUS',
-    '*': 'MULTIPLY',
-    '/': 'DIVIDE',
-    '%': 'MODULO',
-    '>': 'GT',
-    '<': 'LT',
-    '!': 'NOT',
-    '&': 'BITWISE_AND',
-    '|': 'BITWISE_OR',
-    '^': 'BITWISE_XOR',
-    '~': 'BITWISE_NOT',
-    '?': 'QUESTION',
-    ':': 'COLON',
-    '.': 'DOT',
-    ';': 'SEMICOLON',
-    ',': 'COMMA',
-    '(': 'LPAREN',
-    ')': 'RPAREN',
-    '{': 'LBRACE',
-    '}': 'RBRACE',
-    '[': 'LBRACKET',
-    ']': 'RBRACKET'
-};
+exports.Lexer = void 0;
+const types_1 = require("../types");
 class Lexer {
     input;
-    index;
+    index = 0;
     constructor(input) {
         this.input = input;
-        this.index = 0;
     }
     static run(input) {
         return new Lexer(input).tokenize();
@@ -134,31 +46,36 @@ class Lexer {
                 tokens.push(operator);
                 continue;
             }
-            tokens.push({ type: 'ILLEGAL', value: this.advance() });
+            tokens.push({ type: types_1.TokenType.ILLEGAL, value: this.advance() });
         }
         return tokens;
     }
     readIdentifier() {
-        const value = this.readWhile((c) => this.isAlphaNumeric(c));
-        return { type: exports.KEYWORDS.has(value) ? 'KEYWORD' : 'IDENTIFIER', value };
+        const value = this.readWhile(this.isAlphaNumeric);
+        const type = types_1.Keywords.has(value) ? types_1.TokenType.KEYWORD : types_1.TokenType.IDENTIFIER;
+        return { type, value };
     }
     readNumber() {
         let value = '';
-        if (this.current() === '.')
-            value += this.advance();
-        value += this.readWhile((c) => this.isDigit(c));
-        if (this.current() === '.') {
-            value += this.advance();
-            value += this.readWhile((c) => this.isDigit(c));
-        }
-        if (/e/i.test(this.current())) {
-            value += this.advance();
-            if (this.current() === '+' || this.current() === '-') {
+        if (this.isDigit(this.current())) {
+            value += this.readWhile(this.isDigit);
+            if (this.current() === '.' && this.isDigit(this.peek(1))) {
                 value += this.advance();
+                value += this.readWhile(this.isDigit);
             }
-            value += this.readWhile((c) => this.isDigit(c));
+            if (this.current().toLowerCase() === 'e') {
+                value += this.advance();
+                if (this.current() === '+' || this.current() === '-') {
+                    value += this.advance();
+                }
+                if (!this.isDigit(this.current())) {
+                    return { type: types_1.TokenType.ILLEGAL, value };
+                }
+                value += this.readWhile(this.isDigit);
+            }
+            return { type: types_1.TokenType.NUMBER, value };
         }
-        return { type: 'NUMBER', value };
+        return { type: types_1.TokenType.ILLEGAL, value: this.advance() };
     }
     readString(quote) {
         this.advance();
@@ -173,13 +90,29 @@ class Lexer {
             }
         }
         this.advance();
-        return { type: 'STRING', value };
+        return { type: types_1.TokenType.STRING, value };
     }
     readTemplate() {
-        this.advance();
         let value = '';
-        while (this.index < this.input.length && this.current() !== '`') {
-            if (this.current() === '\\') {
+        this.advance();
+        let depth = 1;
+        while (this.index < this.input.length && depth > 0) {
+            const char = this.current();
+            if (char === '`') {
+                this.advance();
+                depth--;
+                if (depth === 0)
+                    break;
+                value += '`';
+                continue;
+            }
+            if (char === '$' && this.peek(1) === '{') {
+                value += this.advance();
+                value += this.advance();
+                value += this.readNestedTemplate();
+                continue;
+            }
+            if (char === '\\') {
                 value += this.advance();
                 value += this.advance();
             }
@@ -187,18 +120,58 @@ class Lexer {
                 value += this.advance();
             }
         }
-        this.advance();
-        return { type: 'TEMPLATE', value };
+        return { type: types_1.TokenType.TEMPLATE, value };
+    }
+    readNestedTemplate() {
+        let result = '';
+        let depth = 1;
+        while (this.index < this.input.length && depth > 0) {
+            const char = this.current();
+            if (char === '{') {
+                depth++;
+                result += this.advance();
+            }
+            else if (char === '}') {
+                depth--;
+                result += this.advance();
+            }
+            else if (char === '`') {
+                result += this.readTemplate().value;
+            }
+            else if (char === '"' || char === "'") {
+                result += this.readString(char).value;
+            }
+            else if (char === '/' && this.isRegexContext([])) {
+                result += this.readRegex().value;
+            }
+            else if (char === '\\') {
+                result += this.advance();
+                result += this.advance();
+            }
+            else {
+                result += this.advance();
+            }
+        }
+        return result;
     }
     readRegex() {
         let value = this.advance();
+        let inClass = false;
         while (this.index < this.input.length) {
             const char = this.current();
             if (char === '\\') {
                 value += this.advance();
                 value += this.advance();
             }
-            else if (char === '/') {
+            else if (char === '[') {
+                inClass = true;
+                value += this.advance();
+            }
+            else if (char === ']' && inClass) {
+                inClass = false;
+                value += this.advance();
+            }
+            else if (char === '/' && !inClass) {
                 value += this.advance();
                 break;
             }
@@ -206,24 +179,24 @@ class Lexer {
                 value += this.advance();
             }
         }
-        value += this.readWhile((c) => /[a-z]/i.test(c));
-        return { type: 'REGEX', value };
+        value += this.readWhile(/[a-z]/i.test);
+        return { type: types_1.TokenType.REGEX, value };
     }
     readOperator() {
-        const three = this.current() + this.peek(1) + this.peek(2);
-        const two = this.current() + this.peek(1);
-        const one = this.current();
-        if (MULTI_OPS[three]) {
-            return {
-                type: MULTI_OPS[three],
-                value: this.advance() + this.advance() + this.advance()
-            };
-        }
-        if (TWO_OPS[two]) {
-            return { type: TWO_OPS[two], value: this.advance() + this.advance() };
-        }
-        if (ONE_OPS[one]) {
-            return { type: ONE_OPS[one], value: this.advance() };
+        const candidates = [
+            this.current() + this.peek(1) + this.peek(2) + this.peek(3),
+            this.current() + this.peek(1) + this.peek(2),
+            this.current() + this.peek(1),
+            this.current()
+        ];
+        const levels = ['FOUR', 'THREE', 'TWO', 'ONE'];
+        for (let i = 0; i < 4; i++) {
+            const candidate = candidates[i];
+            const type = types_1.Operators[levels[i]][candidate];
+            if (type) {
+                const value = Array.from({ length: 4 - i }, () => this.advance()).join('');
+                return { type, value };
+            }
         }
         return null;
     }
@@ -256,31 +229,23 @@ class Lexer {
     }
     readWhile(predicate) {
         let result = '';
-        while (predicate(this.current()) && this.index < this.input.length) {
+        while (this.index < this.input.length && predicate(this.current())) {
             result += this.advance();
         }
         return result;
     }
     advance() {
-        return this.input[this.index++];
+        return this.input[this.index++] ?? '';
     }
     current() {
-        return this.input[this.index] || '';
+        return this.input[this.index] ?? '';
     }
     peek(offset = 0) {
-        return this.input[this.index + offset] || '';
+        return this.input[this.index + offset] ?? '';
     }
-    isWhitespace(char) {
-        return /\s/.test(char);
-    }
-    isAlpha(char) {
-        return /[a-zA-Z_$]/.test(char);
-    }
-    isDigit(char) {
-        return /\d/.test(char);
-    }
-    isAlphaNumeric(char) {
-        return /[a-zA-Z0-9_$]/.test(char);
-    }
+    isWhitespace = (c) => /\s/.test(c);
+    isAlpha = (c) => /[a-zA-Z_$]/.test(c);
+    isDigit = (c) => /\d/.test(c);
+    isAlphaNumeric = (c) => /[a-zA-Z0-9_$]/.test(c);
 }
 exports.Lexer = Lexer;
