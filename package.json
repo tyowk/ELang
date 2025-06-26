@@ -1,0 +1,47 @@
+{
+	"$schema": "https://json.schemastore.org/package.json",
+	"name": "ELang",
+	"description": "ELang is a simple programming language, build on top of JavaScript.",
+	"version": "0.0.1",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "commonjs",
+	"scripts": {
+		"build:ts": "npx tsgo -p tsconfig.json",
+		"test": "node dist/test.js",
+		"build": "npm run pretty && npm run build:ts",
+		"pretty": "npm run format && npm run lint",
+		"format": "biome format src --write --config-path biome.json",
+		"lint": "biome lint src --fix --config-path biome.json"
+	},
+	"keywords": [
+		"elang",
+		"language",
+		"programming",
+		"javascript",
+		"typescript"
+	],
+	"author": "Tyowk <tyowk@outlook.com>",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tyowk/ELang.git"
+	},
+	"bugs": {
+		"url": "https://github.com/tyowk/ELang/issues"
+	},
+	"homepage": "https://github.com/tyowk/ELang#readme",
+	"engines": {
+		"node": ">=20.x",
+		"npm": ">=9.x"
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"devDependencies": {
+		"@biomejs/biome": "^2.0.5",
+		"@typescript/native-preview": "^7.0.0-dev.20250625.1"
+	}
+}
