@@ -1,0 +1,1 @@
+{"version":3,"file":"operators.d.ts","sourceRoot":"","sources":["../../src/types/operators.ts"],"names":[],"mappings":"AAAA,MAAM,MAAM,WAAW,GAAG,MAAM,CAAC,MAAM,EAAE,MAAM,CAAC,CAAC;AAEjD,MAAM,WAAW,WAAW;IACxB,GAAG,EAAE,WAAW,CAAC;IACjB,GAAG,EAAE,WAAW,CAAC;IACjB,KAAK,EAAE,WAAW,CAAC;IACnB,IAAI,EAAE,WAAW,CAAC;CACrB;AAsED,eAAO,MAAM,SAAS,EAAE,WAKvB,CAAC"}
